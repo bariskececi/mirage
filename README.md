@@ -1,5 +1,7 @@
 # Mirage
 
+![Mirage Demo](docs/mirage_demo.gif)
+
 **Deploy a fake industrial plant in 30 seconds. Watch real attackers hit it on a live world map.**
 
 Mirage is a low-interaction OT/ICS honeynet. It stands up convincing decoys of the
@@ -93,6 +95,8 @@ not a static stub. Personas live in `mirage/personas/`; add your own to mimic a
 substation, a packaging line, or a building-automation controller.
 
 ## The console
+
+![Mirage Console](docs/mirage_hero.png)
 
 A single dark SCADA-style page:
 
