@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mirage — OT decoy console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root{
+    --bg:#080b11; --bg2:#0c111b; --panel:#0f1623; --panel2:#121c2c;
+    --grid:#18222f; --line:#1d2a3a;
+    --ink:#cdd9e8; --dim:#65788f; --faint:#3b4a5e;
+    --cyan:#37e1d6;   /* recon / reads */
+    --amber:#ffb454;  /* fingerprint / process */
+    --red:#ff5740;    /* write attempts */
+    --ok:#39d98a;
+    --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+    --disp:'Chakra Petch',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:var(--mono);overflow:hidden}
+  body{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+  /* ---- top bar ---- */
+  header{display:flex;align-items:center;gap:22px;padding:12px 20px;
+    background:linear-gradient(180deg,#0c121d,#0a0f18);
+    border-bottom:1px solid var(--line)}
+  .mark{font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:3px;
+    color:#fff;display:flex;align-items:center;gap:10px}
+  .mark .dot{width:9px;height:9px;border-radius:50%;background:var(--red);
+    box-shadow:0 0 10px var(--red);animation:beat 1.6s infinite}
+  @keyframes beat{0%,100%{opacity:1}50%{opacity:.35}}
+  .site{font-family:var(--disp);font-size:12px;letter-spacing:2px;color:var(--dim);
+    text-transform:uppercase;border-left:1px solid var(--line);padding-left:18px}
+  .site b{color:var(--amber);font-weight:600}
+  .stats{margin-left:auto;display:flex;gap:26px}
+  .stat{text-align:right;line-height:1.1}
+  .stat .v{font-family:var(--disp);font-size:22px;font-weight:700;color:#fff}
+  .stat .v.warn{color:var(--red)}
+  .stat .k{font-size:9.5px;letter-spacing:1.6px;color:var(--dim);text-transform:uppercase}
+
+  /* ---- main ---- */
+  main{position:relative;display:grid;grid-template-columns:1fr 340px;min-height:0}
+  #mapwrap{position:relative;background:
+    radial-gradient(1200px 700px at 60% 30%,#0d1726 0%,#080b11 70%);
+    overflow:hidden}
+  #mapwrap::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.22) 2px 4px);
+    mix-blend-mode:multiply;opacity:.5}
+  svg{width:100%;height:100%;display:block}
+  .country{fill:#0e1722;stroke:#1b2a3b;stroke-width:.5}
+  .graticule{fill:none;stroke:#101a26;stroke-width:.5}
+  .home{fill:var(--amber)}
+  .home-ring{fill:none;stroke:var(--amber);stroke-width:1.2;opacity:.7}
+  .src{stroke-width:0}
+  .arc{fill:none;stroke-width:1.1;opacity:.85}
+
+  .legend{position:absolute;left:16px;bottom:14px;display:flex;gap:16px;
+    font-size:10px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;
+    background:rgba(8,11,17,.6);padding:7px 12px;border:1px solid var(--line);border-radius:3px}
+  .legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+
+  /* ---- feed ---- */
+  aside{background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0}
+  .feed-h{font-family:var(--disp);font-size:11px;letter-spacing:2.5px;color:var(--dim);
+    padding:12px 16px;border-bottom:1px solid var(--line);text-transform:uppercase;
+    display:flex;justify-content:space-between}
+  .feed-h .live{color:var(--ok)}
+  #feed{flex:1;overflow-y:auto;padding:6px 0;scrollbar-width:thin;
+    scrollbar-color:var(--line) transparent}
+  .row{padding:7px 16px;border-bottom:1px solid #0d1421;font-size:11.5px;
+    line-height:1.45;animation:slip .35s ease}
+  @keyframes slip{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
+  .row .top{display:flex;justify-content:space-between;color:var(--faint);font-size:9.5px;
+    letter-spacing:.5px;margin-bottom:2px}
+  .row .act{color:var(--cyan)}
+  .row.sev-notice .act{color:var(--amber)}
+  .row.sev-high .act{color:var(--red);font-weight:700}
+  .row .det{color:var(--ink);opacity:.85}
+  .row .src-ip{color:var(--dim)}
+  .row .flag{color:var(--ink)}
+
+  /* ---- scada mimic ---- */
+  footer{background:linear-gradient(0deg,#0a0f18,#0c121d);border-top:1px solid var(--line);
+    padding:10px 16px 12px}
+  .mimic-h{font-family:var(--disp);font-size:10px;letter-spacing:2.5px;color:var(--dim);
+    text-transform:uppercase;margin-bottom:9px;display:flex;align-items:center;gap:10px}
+  .mimic-h::after{content:"";flex:1;height:1px;background:var(--line)}
+  .mimic{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none}
+  .mimic::-webkit-scrollbar{display:none}
+  .tile{flex:0 0 auto;min-width:96px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:4px;padding:8px 10px}
+  .tile .lbl{font-size:8.5px;letter-spacing:.8px;color:var(--dim);text-transform:uppercase;
+    white-space:nowrap;margin-bottom:5px}
+  .tile .num{font-family:var(--disp);font-size:19px;font-weight:600;color:var(--cyan)}
+  .tile .num small{font-size:10px;color:var(--dim);font-weight:400;margin-left:3px}
+  .bar{height:5px;background:#0a1019;border-radius:3px;margin-top:6px;overflow:hidden}
+  .bar > span{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--amber));
+    transition:width .6s ease}
+  .lamp{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .lamp i{width:13px;height:13px;border-radius:50%;background:#27313f;box-shadow:inset 0 0 4px #000}
+  .lamp.on i{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .lamp.on.write i{background:var(--red);box-shadow:0 0 10px var(--red);animation:beat .8s infinite}
+  .lamp span{font-size:10px;color:var(--dim)}
+
+  @media (max-width:880px){
+    main{grid-template-columns:1fr} aside{display:none} .stats{gap:14px}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="mark"><span class="dot"></span>MIRAGE</div>
+    <div class="site">decoy site · <b id="siteName">loading…</b></div>
+    <div class="stats">
+      <div class="stat"><div class="v" id="sTotal">0</div><div class="k">Total hits</div></div>
+      <div class="stat"><div class="v" id="sUniq">0</div><div class="k">Unique sources</div></div>
+      <div class="stat"><div class="v warn" id="sWrite">0</div><div class="k">Write attempts</div></div>
+      <div class="stat"><div class="v" id="sActive">0</div><div class="k">Active · 60s</div></div>
+    </div>
+  </header>
+
+  <main>
+    <div id="mapwrap">
+      <svg id="map" preserveAspectRatio="xMidYMid slice"></svg>
+      <div class="legend">
+        <span><i style="background:var(--cyan)"></i>Recon / read</span>
+        <span><i style="background:var(--amber)"></i>Fingerprint</span>
+        <span><i style="background:var(--red)"></i>Write attempt</span>
+      </div>
+    </div>
+    <aside>
+      <div class="feed-h"><span>Live interaction feed</span><span class="live">● LIVE</span></div>
+      <div id="feed"></div>
+    </aside>
+  </main>
+
+  <footer>
+    <div class="mimic-h">Decoy process — values served to attackers (read-only)</div>
+    <div class="mimic" id="mimic"></div>
+  </footer>
+
+<script>
+const HOME = { lat: 34.0, lon: -117.4, name: "Riverside WTP" };
+const COLORS = { info:"#37e1d6", notice:"#ffb454", high:"#ff5740" };
+const flag = cc => (!cc||cc.length!==2||cc==="ZZ") ? "··" :
+  String.fromCodePoint(...[...cc.toUpperCase()].map(c=>0x1f1a5+c.charCodeAt(0)));
+
+let svg, gMap, gArc, gPt, projection, path, W, H;
+
+async function initMap(){
+  const world = await (await fetch("/static/world.geojson")).json();
+  svg = d3.select("#map");
+  const wrap = document.getElementById("mapwrap");
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  svg.attr("viewBox",`0 0 ${W} ${H}`);
+  projection = d3.geoNaturalEarth1().fitSize([W, H*1.15], world);
+  path = d3.geoPath(projection);
+
+  gMap = svg.append("g");
+  gMap.append("path").datum(d3.geoGraticule10()).attr("class","graticule").attr("d",path);
+  gMap.selectAll(".country").data(world.features).enter()
+    .append("path").attr("class","country").attr("d",path);
+
+  gArc = svg.append("g");
+  gPt = svg.append("g");
+
+  // home marker
+  const [hx,hy] = projection([HOME.lon, HOME.lat]);
+  gPt.append("circle").attr("class","home").attr("cx",hx).attr("cy",hy).attr("r",4);
+  const ring = gPt.append("circle").attr("class","home-ring").attr("cx",hx).attr("cy",hy).attr("r",4);
+  (function pulse(){ ring.attr("r",4).attr("opacity",.7)
+    .transition().duration(2600).ease(d3.easeCubicOut)
+    .attr("r",34).attr("opacity",0).on("end",pulse); })();
+}
+
+function strike(ev){
+  if(ev.lat==null||ev.lon==null) return;
+  const color = COLORS[ev.severity]||COLORS.info;
+  const src = projection([ev.lon, ev.lat]);
+  const dst = projection([HOME.lon, HOME.lat]);
+  if(!src||!dst) return;
+
+  // source blip
+  const c = gPt.append("circle").attr("class","src").attr("cx",src[0]).attr("cy",src[1])
+    .attr("r",2.5).attr("fill",color).attr("opacity",.95);
+  c.transition().duration(4200).attr("opacity",.12);
+
+  // great-circle arc, drawn as an animated dash
+  const inter = d3.geoInterpolate([ev.lon,ev.lat],[HOME.lon,HOME.lat]);
+  const pts=[]; for(let i=0;i<=40;i++) pts.push(projection(inter(i/40)));
+  const line = d3.line().curve(d3.curveBasis)(pts);
+  const p = gArc.append("path").attr("class","arc").attr("d",line)
+    .attr("stroke",color);
+  const len = p.node().getTotalLength();
+  p.attr("stroke-dasharray",`${len} ${len}`).attr("stroke-dashoffset",len)
+    .transition().duration(900).ease(d3.easeQuadIn).attr("stroke-dashoffset",0)
+    .transition().duration(700).attr("opacity",0).remove();
+
+  // impact flash at home
+  gPt.append("circle").attr("cx",dst[0]).attr("cy",dst[1]).attr("r",3)
+    .attr("fill","none").attr("stroke",color).attr("stroke-width",1.5)
+    .transition().delay(880).duration(600).attr("r",16).attr("opacity",0).remove();
+}
+
+/* ---- feed ---- */
+const feed = document.getElementById("feed");
+function pushFeed(ev){
+  const row = document.createElement("div");
+  row.className = `row sev-${ev.severity}`;
+  const t = new Date(ev.ts*1000).toLocaleTimeString();
+  row.innerHTML =
+    `<div class="top"><span>${t} · <span class="src-ip">${ev.src_ip}</span> `+
+    `<span class="flag">${flag(ev.country_code)}</span></span><span>${ev.protocol}</span></div>`+
+    `<div><span class="act">${ev.action}</span></div>`+
+    `<div class="det">${ev.detail}</div>`;
+  feed.prepend(row);
+  while(feed.childElementCount>120) feed.lastChild.remove();
+}
+
+/* ---- stats ---- */
+const recentTs=[];
+async function refreshStats(){
+  try{
+    const s = await (await fetch("/api/stats")).json();
+    document.getElementById("sTotal").textContent = s.total.toLocaleString();
+    document.getElementById("sUniq").textContent = s.unique_ips.toLocaleString();
+    document.getElementById("sWrite").textContent = s.write_attempts.toLocaleString();
+  }catch(e){}
+}
+function bumpActive(){
+  const now=Date.now(); recentTs.push(now);
+  while(recentTs.length && recentTs[0]<now-60000) recentTs.shift();
+  document.getElementById("sActive").textContent = recentTs.length;
+}
+
+/* ---- scada mimic ---- */
+let processMeta=[];
+function prettify(name){
+  let n=name.replace(/_x100$/,"").replace(/_/g," ");
+  return n;
+}
+async function buildMimic(){
+  processMeta = await (await fetch("/api/process")).json();
+  const m=document.getElementById("mimic"); m.innerHTML="";
+  for(const p of processMeta){
+    const tile=document.createElement("div"); tile.className="tile"; tile.dataset.addr=p.addr;
+    if(p.unit==="bool"){
+      tile.innerHTML=`<div class="lbl">${prettify(p.name)}</div>`+
+        `<div class="lamp ${p.value?"on":""} ${p.writable?"write":""}" data-bool>`+
+        `<i></i><span>${p.value?"RUN":"STOP"}</span></div>`;
+    }else{
+      const scaled = p.name.endsWith("_x100") ? (p.value/100).toFixed(2) : p.value;
+      const showBar = p.unit==="%";
+      tile.innerHTML=`<div class="lbl">${prettify(p.name)}</div>`+
+        `<div class="num" data-val>${scaled}<small>${p.unit==="bool"?"":p.unit}</small></div>`+
+        (showBar?`<div class="bar"><span style="width:${Math.min(100,p.value)}%"></span></div>`:``);
+    }
+    m.appendChild(tile);
+  }
+}
+async function tickMimic(){
+  try{
+    const vals = await (await fetch("/api/process")).json();
+    for(const p of vals){
+      const tile=document.querySelector(`.tile[data-addr="${p.addr}"]`); if(!tile) continue;
+      if(p.unit==="bool"){
+        const lamp=tile.querySelector(".lamp");
+        lamp.classList.toggle("on",!!p.value);
+        lamp.querySelector("span").textContent=p.value?"RUN":"STOP";
+      }else{
+        const scaled = p.name.endsWith("_x100") ? (p.value/100).toFixed(2) : p.value;
+        tile.querySelector("[data-val]").firstChild.textContent=scaled;
+        const bar=tile.querySelector(".bar > span");
+        if(bar) bar.style.width=Math.min(100,p.value)+"%";
+      }
+    }
+  }catch(e){}
+}
+
+/* ---- websocket ---- */
+function connect(){
+  const ws=new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage=e=>{
+    const msg=JSON.parse(e.data);
+    if(msg.type==="interaction"){
+      const ev=msg.data;
+      pushFeed(ev); strike(ev); bumpActive();
+    }
+  };
+  ws.onclose=()=>setTimeout(connect,2000);
+}
+
+(async function(){
+  const meta=await (await fetch("/api/meta")).json();
+  document.getElementById("siteName").textContent=meta.persona;
+  HOME.name=meta.persona;
+  await initMap();
+  await buildMimic();
+  connect();
+  refreshStats(); setInterval(refreshStats,5000);
+  setInterval(tickMimic,4000);
+  window.addEventListener("resize",()=>{ d3.select("#map").selectAll("*").remove(); initMap(); });
+})();
+</script>
+</body>
+</html>

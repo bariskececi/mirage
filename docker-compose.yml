@@ -1,0 +1,13 @@
+services:
+  mirage:
+    build: .
+    container_name: mirage
+    restart: unless-stopped
+    ports:
+      - "502:502"     # Modbus TCP decoy
+      - "102:102"     # Siemens S7 decoy
+      - "3000:3000"   # dashboard
+    volumes:
+      - ./data:/app/data
+    environment:
+      MIRAGE_DB: /app/data/mirage.db
